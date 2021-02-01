@@ -1,7 +1,6 @@
 package com.imageupload.service;
 
-import java.io.File;
-import java.io.FileOutputStream;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,6 +21,9 @@ import com.imageupload.response.ProductResponse;
 public class ImageService implements IImageService {
 	
 	@Autowired
+	FileUploadService fileUploadService;
+	
+	@Autowired
 	ImageRepository imageRepository;
 	
 	@Autowired
@@ -33,46 +35,28 @@ public class ImageService implements IImageService {
 	@Override
 	public ResponseEntity<?> saveProduct(FormRequest formRequest){
 		
+		MessageResponse message = new MessageResponse();
+		message.setMessage("done");
 		Product product = new Product(formRequest.getName(),formRequest.getRate());
-		
 		productRepository.save(product);
+		
 		for(Integer i = 0;i<formRequest.getFiles().size();i++) {
-			String fileExtension = "";
-			boolean ok = false;
-			String s = formRequest.getFiles().get(i).getOriginalFilename();
-			for(int j = 0;j<s.length();j++) {
-				if(s.charAt(j) == '.')ok = true;
-				if(ok)fileExtension += s.charAt(j);
-			}
-			fileExtension = fileExtension.toLowerCase();
-			if(!fileExtension.equals(".jpg") && !fileExtension.equals(".png")) {
-				return ResponseEntity.badRequest().body(new MessageResponse("only support .jpg and .png image formate"));
+			if(!fileUploadService.isValidFile(formRequest.getFiles().get(i).getOriginalFilename())) {
+				return ResponseEntity.badRequest().body(new MessageResponse("invalid formate"));
 			}
 		}
+		
 		for(Integer i = 0;i<formRequest.getFiles().size();i++) {
-			String fileName = formRequest.getName();
-			fileName += i.toString();
-			String fileExtension = "";
-			boolean ok = false;
-			String s = formRequest.getFiles().get(i).getOriginalFilename();
-			for(int j = 0;j<s.length();j++) {
-				if(s.charAt(j) == '.')ok = true;
-				if(ok)fileExtension += s.charAt(j);
-			}
-			fileExtension = fileExtension.toLowerCase();
-			try {
-				ImageModel imageModel = new ImageModel(fileName+fileExtension,formRequest.getFiles().get(i).getContentType(),product);
-				imageRepository.save(imageModel);
-				File newFile = new File(pathLocation + fileName + fileExtension);
-				newFile.createNewFile();
-				FileOutputStream fout = new FileOutputStream(newFile);
-				fout.write(formRequest.getFiles().get(i).getBytes());
-				fout.close();
-			}catch(Exception e){
-				e.printStackTrace();
-			}
+			
+			String time = new Timestamp(System.currentTimeMillis()).toString();
+			fileUploadService.fileUpload(formRequest.getName() + time , formRequest.getFiles().get(i));
+			ImageModel imageModel = new ImageModel(
+										formRequest.getName()+time+fileUploadService.getFileExtension(formRequest.getFiles().get(i).getOriginalFilename()),
+										formRequest.getFiles().get(i).getContentType(),
+										product);
+			imageRepository.save(imageModel);
 		}
-		return ResponseEntity.ok(new MessageResponse("done"));
+		return ResponseEntity.ok(message);
 	}
 
 	@Override
@@ -80,7 +64,7 @@ public class ImageService implements IImageService {
 		if(!productRepository.existsById(id))return ResponseEntity.badRequest().body(new MessageResponse("product not found"));
 		Product product = productRepository.getOne(id);
 		
-		ProductResponse productResponse = new ProductResponse(product.getName(),product.getRate());
+		ProductResponse productResponse = new ProductResponse(product.getName(),product.getRate(),pathLocation);
 		
 		List<String> array = new ArrayList<>();
 		
@@ -94,6 +78,5 @@ public class ImageService implements IImageService {
 		productResponse.setImageList(array);
 		return ResponseEntity.ok(productResponse);
 	}
-	
 	
 }
